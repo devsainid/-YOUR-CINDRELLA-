@@ -9,3 +9,5 @@ services:
         value: 7600489635:AAEXc3iBM7g_O_L6_yL3h5vNN4o_BSWsLDE
       - key: OPENROUTER_API_KEY
         value: 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
+      - key: OWNER_ID
+        value: "6559745280"
