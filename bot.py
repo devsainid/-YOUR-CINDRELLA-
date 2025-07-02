@@ -1,28 +1,25 @@
-
 import os
 import logging
 import asyncio
 import requests
 from telegram import (
-    Update, InlineKeyboardButton, InlineKeyboardMarkup, InputTextMessageContent
+    Update, InlineKeyboardButton, InlineKeyboardMarkup, InlineQueryResultArticle, InputTextMessageContent
 )
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler,
-    ConversationHandler, ContextTypes, filters
+    InlineQueryHandler, ConversationHandler, ContextTypes, filters
 )
 
-# ENV CONFIG
-OWNER_ID = 6559745280
+# ENV
+OWNER_ID = int(os.getenv("OWNER_ID"))
 ADMIN_IDS = [OWNER_ID]
-BROADCAST_URL = "https://t.me/yourchannel"  # Change this to your real broadcast link
-
-# STATE
+BROADCAST_URL = "https://t.me/yourchannel"  # Replace with real broadcast URL
 ADD_ADMIN, REMOVE_ADMIN = range(2)
 
 # Logging
 logging.basicConfig(level=logging.INFO)
 
-# AI Response
+# AI REPLY
 def get_ai_response(prompt):
     headers = {
         "Authorization": f"Bearer {os.getenv('OPENROUTER_API_KEY')}",
@@ -31,25 +28,16 @@ def get_ai_response(prompt):
     data = {
         "model": "openrouter/cinematika-7b",
         "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "You are CINDRELLA, a 16-year-old intelligent, emotionally mature, and realistic girl. "
-                    "You speak fluently in English and always sound human. You're friendly, confident, and a little bit naughty—but never childish or overly playful. "
-                    "Your tone is calm, witty, and thoughtful. Keep replies short, smart, and real — like a teenager who knows what she’s saying. "
-                    "Never sound like a robot. Always reply only in English."
-                )
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
+            {"role": "system", "content":
+             "You are CINDRELLA, a 16-year-old emotionally smart girl. You're fluent, natural, realistic, witty and slightly naughty. "
+             "You reply only in English. Be friendly but never childish or robotic."},
+            {"role": "user", "content": prompt}
         ]
     }
     res = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=data)
     return res.json()['choices'][0]['message']['content']
 
-# START
+# /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = (
         "✨ *I've been waiting for you and finally you're here!* ✨\n\n"
@@ -58,24 +46,39 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(msg, parse_mode="Markdown")
 
-# AUTO REPLY
+# Auto reply
 async def auto_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = update.message.text.lower()
-    if any(word in msg for word in ["hi", "hello", "hey", "hlo", "heyy", "hola"]):
-        await update.message.chat.send_action(action="typing")
+    text = update.message.text.lower()
+    if any(word in text for word in ["hi", "hello", "hey", "hlo", "heyy", "hola"]):
+        await update.message.chat.send_action("typing")
         await asyncio.sleep(1.5)
         reply = get_ai_response(update.message.text)
         await update.message.reply_text(reply)
 
-# ADMIN PANEL
+# Message logger
+async def log_to_owner(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        user = update.effective_user
+        chat = update.effective_chat
+        message = update.effective_message.text
+
+        if user.id == OWNER_ID:
+            return
+
+        tag = "Private" if chat.type == "private" else f"Group: {chat.title or chat.username}"
+        log = f"📥 {tag}\n👤 {user.first_name} ({user.id})\n💬 {message}"
+        await context.bot.send_message(chat_id=OWNER_ID, text=log)
+    except Exception as e:
+        logging.warning(f"Log error: {e}")
+
+# /admin
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if update.effective_chat.type != "private":
-        await update.message.reply_text("⚠️ Please use /admin in private chat only.")
+        await update.message.reply_text("⚠️ Use /admin in private chat.")
         return
 
     if user_id == OWNER_ID:
-        await update.message.reply_text("Opening the broadcast panel... make sure your message hits the right hearts ❤️")
         buttons = [
             [InlineKeyboardButton("📢 Broadcast", url=BROADCAST_URL)],
             [InlineKeyboardButton("➕ Add Admin", callback_data="add_admin")],
@@ -83,100 +86,92 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("📋 List Admins", callback_data="list_admins")]
         ]
     elif user_id in ADMIN_IDS:
-        await update.message.reply_text("Opening the broadcast panel... make sure your message hits the right hearts ❤️")
         buttons = [[InlineKeyboardButton("📢 Broadcast", url=BROADCAST_URL)]]
     else:
-        await update.message.reply_text("🚫 Sorry, this panel is only for the bot owner or authorized admins.")
+        await update.message.reply_text("🚫 Only authorized admins can access this.")
         return
 
-    keyboard = InlineKeyboardMarkup(buttons)
-    await update.message.reply_text("🔐 *Admin Panel:*", reply_markup=keyboard, parse_mode="Markdown")
+    markup = InlineKeyboardMarkup(buttons)
+    await update.message.reply_text("🔐 *Admin Panel:*", reply_markup=markup, parse_mode="Markdown")
 
-# CALLBACKS
+# Callback handler
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
     await query.answer()
 
     if user_id != OWNER_ID:
-        await query.edit_message_text("❌ Only the bot owner can use this function.")
+        await query.edit_message_text("❌ Only the bot owner can do this.")
         return
 
     if query.data == "add_admin":
-        await query.edit_message_text("🆔 Send the user ID you want to *add* as admin:", parse_mode="Markdown")
+        await query.edit_message_text("Send the ID to *add* as admin:", parse_mode="Markdown")
         return ADD_ADMIN
     elif query.data == "remove_admin":
-        await query.edit_message_text("🆔 Send the user ID you want to *remove* from admins:", parse_mode="Markdown")
+        await query.edit_message_text("Send the ID to *remove* from admin:", parse_mode="Markdown")
         return REMOVE_ADMIN
     elif query.data == "list_admins":
-        admins = '\n'.join(f"`{uid}`" for uid in ADMIN_IDS)
-        await query.edit_message_text(f"👑 *Current Admins:*
-{admins}", parse_mode="Markdown")
+        admin_list = '\n'.join(f"`{uid}`" for uid in ADMIN_IDS)
+        await query.edit_message_text(f"👑 *Current Admins:*\n{admin_list}", parse_mode="Markdown")
 
-# HANDLE ADD/REMOVE ADMIN
+# Add/remove handlers
 async def handle_add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        new_id = int(update.message.text.strip())
-        if new_id not in ADMIN_IDS:
-            ADMIN_IDS.append(new_id)
-            await update.message.reply_text(f"✅ Admin added: `{new_id}`", parse_mode="Markdown")
+        uid = int(update.message.text.strip())
+        if uid not in ADMIN_IDS:
+            ADMIN_IDS.append(uid)
+            await update.message.reply_text(f"✅ Admin added: `{uid}`", parse_mode="Markdown")
         else:
-            await update.message.reply_text("⚠️ This user is already an admin.")
+            await update.message.reply_text("⚠️ Already admin.")
     except:
-        await update.message.reply_text("⚠️ Invalid user ID.")
+        await update.message.reply_text("❌ Invalid ID.")
     return ConversationHandler.END
 
 async def handle_remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        rem_id = int(update.message.text.strip())
-        if rem_id == OWNER_ID:
-            await update.message.reply_text("🚫 You can't remove the bot owner.")
-        elif rem_id in ADMIN_IDS:
-            ADMIN_IDS.remove(rem_id)
-            await update.message.reply_text(f"✅ Admin removed: `{rem_id}`", parse_mode="Markdown")
+        uid = int(update.message.text.strip())
+        if uid == OWNER_ID:
+            await update.message.reply_text("🚫 Can't remove owner.")
+        elif uid in ADMIN_IDS:
+            ADMIN_IDS.remove(uid)
+            await update.message.reply_text(f"✅ Removed: `{uid}`", parse_mode="Markdown")
         else:
-            await update.message.reply_text("⚠️ This user is not an admin.")
+            await update.message.reply_text("⚠️ Not an admin.")
     except:
-        await update.message.reply_text("⚠️ Invalid user ID.")
+        await update.message.reply_text("❌ Invalid ID.")
     return ConversationHandler.END
 
-# CANCEL
+# Cancel
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("❌ Cancelled.")
     return ConversationHandler.END
 
-
-# LOG TO OWNER
-async def log_to_owner(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        user = update.effective_user
-        chat = update.effective_chat
-        message = update.effective_message.text
-
-        if chat.type == "private":
-            tag = "🧑‍💻 Private"
-        else:
-            tag = f"👥 Group: {chat.title or chat.username}"
-
-        log_text = (
-            f"{tag}\n"
-            f"👤 From: {user.first_name} ({user.id})\n"
-            f"💬 Message: {message}"
+# Inline query
+async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.inline_query.query
+    if not query:
+        return
+    response = get_ai_response(query)
+    results = [
+        InlineQueryResultArticle(
+            id="1",
+            title="✨ CINDRELLA's answer",
+            description="Tap to send",
+            input_message_content=InputTextMessageContent(response)
         )
-        if user.id != OWNER_ID:
-            await context.bot.send_message(chat_id=OWNER_ID, text=log_text)
-    except Exception as e:
-        logging.error(f"Logging failed: {e}")
+    ]
+    await update.inline_query.answer(results, cache_time=1)
 
-# MAIN
+# Main
 if __name__ == '__main__':
     app = ApplicationBuilder().token(os.getenv("BOT_TOKEN")).build()
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("admin", admin_panel))
     app.add_handler(MessageHandler(filters.TEXT & filters.Group(), auto_reply))
     app.add_handler(MessageHandler(filters.TEXT, log_to_owner))
-
     app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(InlineQueryHandler(inline_query))
 
     conv_handler = ConversationHandler(
         entry_points=[CallbackQueryHandler(button_handler)],
