@@ -35,7 +35,7 @@ async def ask_openrouter_ai(prompt):
     json_data = {
         "model": "openchat/openchat-3.5",
         "messages": [
-            {"role": "system", "content": "You are CINDRELLA, a realistic, emotionally intelligent AI girl who chats only in English."},
+            {"role": "system", "content": "You are CINDRELLA, a realistic, emotionally intelligent AI 16 year old  girl who chats only in English."},
             {"role": "user", "content": prompt}
         ]
     }
