@@ -35,7 +35,14 @@ async def ask_openrouter_ai(prompt):
     json_data = {
         "model": "openchat/openchat-3.5",
         "messages": [
-            {"role": "system", "content": "You are CINDRELLA, a realistic, emotionally intelligent AI 16 year old  girl who chats only in English."},
+            {
+                "role": "system",
+                "content": (
+                    "You are CINDRELLA, a 16-year-old emotionally intelligent girl. "
+                    "You talk in a warm, friendly, human-like way. Always respond only in English. "
+                    "You're kind, realistic, smart, and emotionally supportive like a best friend."
+                )
+            },
             {"role": "user", "content": prompt}
         ]
     }
@@ -88,17 +95,20 @@ async def handle_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if "action" not in context.user_data:
         return
 
-    user_id = int(update.message.text)
-    action = context.user_data["action"]
+    try:
+        user_id = int(update.message.text)
+        action = context.user_data["action"]
 
-    if action == "add":
-        if user_id not in admins:
-            admins.append(user_id)
-            await update.message.reply_text(f"✅ Added {user_id} as admin.")
-    elif action == "remove":
-        if user_id in admins:
-            admins.remove(user_id)
-            await update.message.reply_text(f"❌ Removed {user_id} from admin list.")
+        if action == "add":
+            if user_id not in admins:
+                admins.append(user_id)
+                await update.message.reply_text(f"✅ Added {user_id} as admin.")
+        elif action == "remove":
+            if user_id in admins:
+                admins.remove(user_id)
+                await update.message.reply_text(f"❌ Removed {user_id} from admin list.")
+    except:
+        await update.message.reply_text("⚠️ Invalid ID. Please enter a valid number.")
 
     context.user_data.clear()
 
